@@ -7,6 +7,7 @@ import express from 'express';
 import cors from 'cors';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { 
   CallToolRequestSchema,
   ErrorCode,
@@ -386,6 +387,32 @@ class GHLMCPHttpServer {
     this.app.get('/sse', handleSSE);
     this.app.post('/sse', handleSSE);
 
+    // Streamable HTTP endpoint (stateless: new transport per request)
+    this.app.post('/mcp', async (req, res) => {
+      console.log(`[GHL MCP HTTP] Streamable HTTP request from: ${req.ip}`);
+      try {
+        const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+        res.on('close', () => {
+          transport.close();
+        });
+        await this.server.connect(transport);
+        await transport.handleRequest(req, res, req.body);
+      } catch (error) {
+        console.error('[GHL MCP HTTP] Streamable HTTP error:', error);
+        if (!res.headersSent) {
+          res.status(500).json({
+            jsonrpc: '2.0',
+            error: { code: -32603, message: 'Internal server error' },
+            id: null
+          });
+        }
+      }
+    });
+
+    this.app.get('/mcp', (req, res) => {
+      res.status(405).json({ error: 'Method not allowed. Use POST /mcp' });
+    });
+
     // Root endpoint with server info
     this.app.get('/', (req, res) => {
       res.json({
@@ -396,7 +423,8 @@ class GHLMCPHttpServer {
           health: '/health',
           capabilities: '/capabilities',
           tools: '/tools',
-          sse: '/sse'
+          sse: '/sse',
+          mcp: '/mcp'
         },
         tools: this.getToolsCount(),
         documentation: 'https://github.com/your-repo/ghl-mcp-server'
@@ -695,6 +723,7 @@ class GHLMCPHttpServer {
         console.log('✅ GoHighLevel MCP HTTP Server started successfully!');
         console.log(`🌐 Server running on: http://0.0.0.0:${this.port}`);
         console.log(`🔗 SSE Endpoint: http://0.0.0.0:${this.port}/sse`);
+        console.log(`🔗 Streamable HTTP Endpoint: http://0.0.0.0:${this.port}/mcp`);
         console.log(`📋 Tools Available: ${this.getToolsCount().total}`);
         console.log('🎯 Ready for ChatGPT integration!');
         console.log('=========================================');
