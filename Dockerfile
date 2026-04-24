@@ -1,26 +1,24 @@
 # Use Node.js 18 LTS
 FROM node:18-alpine
 
-# Set working directory
 WORKDIR /app
 
-# Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install all deps (incl. typescript) so `tsc` is available for the build
+RUN npm ci
 
-# Copy source code
 COPY . .
 
-# Build the application
+# Build TypeScript -> dist/
 RUN npm run build
 
-# Expose the port
+# Drop dev deps after build to keep runtime slim
+RUN npm prune --production
+
 EXPOSE 8000
 
-# Set environment to production
 ENV NODE_ENV=production
 
-# Start the HTTP server
-CMD ["npm", "start"] 
+# `npm start` -> `node dist/http-server.js`
+CMD ["npm", "start"]
